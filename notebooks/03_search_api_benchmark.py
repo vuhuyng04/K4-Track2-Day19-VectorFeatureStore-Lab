@@ -36,8 +36,11 @@ proc = subprocess.Popen(
 )
 
 # Đợi server up + warm (Searcher.from_corpus loads embeddings + indexes 1000 docs)
-URL = "http://localhost:8000"
-for _ in range(60):
+# 127.0.0.1, not localhost: on Windows "localhost" tries ::1 first while uvicorn
+# binds IPv4 only, adding seconds of client-side delay per request.
+URL = "http://127.0.0.1:8000"
+# Docker path indexes into the Qdrant server on startup — allow up to 180 s.
+for _ in range(180):
     try:
         r = httpx.get(f"{URL}/healthz", timeout=2.0)
         if r.status_code == 200 and r.json().get("ready"):
@@ -46,7 +49,7 @@ for _ in range(60):
         pass
     time.sleep(1)
 else:
-    raise RuntimeError("API didn't become ready within 60s")
+    raise RuntimeError("API didn't become ready within 180s")
 
 print(httpx.get(f"{URL}/healthz").json())
 
@@ -85,13 +88,19 @@ def percentile(values: list[float], p: float) -> float:
     return sorted(values)[min(int(n * p), n - 1)]
 
 
+# One keep-alive client for the whole benchmark, like a real service caller.
+# `httpx.get()` builds a fresh Client (TCP + SSL context) per call, which on
+# Windows adds 100+ ms of pure client overhead to every wall-clock sample.
+http = httpx.Client(timeout=10.0)
+
+
 def benchmark_mode(mode: str, reps: int = 2) -> dict[str, float]:
     server_latencies: list[float] = []
     wall_latencies: list[float] = []
     for _ in range(reps):
         for q in golden:
             t0 = time.perf_counter()
-            r = httpx.get(f"{URL}/search", params={"q": q["query"], "mode": mode})
+            r = http.get(f"{URL}/search", params={"q": q["query"], "mode": mode})
             wall_latencies.append((time.perf_counter() - t0) * 1000)
             server_latencies.append(r.json()["latency_ms"])
     return {
@@ -101,6 +110,12 @@ def benchmark_mode(mode: str, reps: int = 2) -> dict[str, float]:
         "p99_wall":   percentile(wall_latencies, 0.99),
     }
 
+
+# Warm-up: 10 queries per mode (rubric measures P99 *after* warm-up) — first
+# calls pay for ONNX graph init, gRPC channel setup and CPU frequency ramp-up.
+for mode in ("keyword", "semantic", "hybrid"):
+    for q in golden[:10]:
+        http.get(f"{URL}/search", params={"q": q["query"], "mode": mode})
 
 print(f"  {'mode':10}  {'P50':>7}  {'P95':>7}  {'P99':>7}  {'P99(wall)':>9}")
 results = {}

@@ -25,7 +25,10 @@ from __future__ import annotations
 from datetime import timedelta
 from pathlib import Path
 
-from feast import Entity, FeatureView, Field, FileSource, ValueType
+from feast import Entity, FeatureView, Field, ValueType
+from feast.infra.offline_stores.contrib.postgres_offline_store.postgres_source import (
+    PostgreSQLSource,
+)
 from feast.types import Float32, Int64, String
 
 # Resolve relative to this file so `feast apply` works regardless of cwd.
@@ -51,24 +54,26 @@ item = Entity(
 
 
 # ── Sources ─────────────────────────────────────────────────────────────
-# Each FileSource points to a Parquet file the student generates in NB4
-# (notebooks/04_feast_feature_store.py builds these from the corpus + synthetic
-# user activity). The schema each source produces is mirrored in the FeatureView.
-user_profile_source = FileSource(
+# Docker path: each source is a Postgres table in the `feast_offline` database
+# (docker-compose.yml). NB4 generates the synthetic data and writes the three
+# tables before `feast apply`; materialize then copies the latest row per
+# entity into Redis. The schema each table produces is mirrored in the
+# FeatureView. (Lite path used FileSource over the Parquet copies in data/.)
+user_profile_source = PostgreSQLSource(
     name="user_profile_source",
-    path=str(_DATA_DIR / "user_profile.parquet"),
+    table="user_profile",
     timestamp_field="event_timestamp",
 )
 
-item_popularity_source = FileSource(
+item_popularity_source = PostgreSQLSource(
     name="item_popularity_source",
-    path=str(_DATA_DIR / "item_popularity.parquet"),
+    table="item_popularity",
     timestamp_field="event_timestamp",
 )
 
-query_velocity_source = FileSource(
+query_velocity_source = PostgreSQLSource(
     name="query_velocity_source",
-    path=str(_DATA_DIR / "query_velocity.parquet"),
+    table="query_velocity",
     timestamp_field="event_timestamp",
 )
 

@@ -11,6 +11,7 @@ rank-bm25>=0.2.2,<1.0
 
 # Feature store
 feast>=0.41,<1.0                       # LF AI&Data; SQLite online + file offline by default
+python-dotenv>=1.0,<2.0                # app/__init__.py loads .env (QDRANT_MODE, EMBEDDING_BACKEND, ...)
 # NOTE on dill: feast pins dill~=0.3.0, but dill 0.3.9 crashes on Python 3.14
 # ("_Pickler._batch_setitems() missing 1 required positional argument") when it
 # serialises an on-demand feature view's UDF. feast itself works fine on 0.4.x.

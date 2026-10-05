@@ -57,7 +57,7 @@ start day19-redis "$REDIS_IMAGE" \
 # initialise a non-empty data directory and the container exits. Docker's
 # volumes are empty, which is why docker-compose.yml gets away without this.
 start day19-postgres "$POSTGRES_IMAGE" \
-  -p 5432:5432 \
+  -p 5433:5432 \
   -e POSTGRES_USER=feast -e POSTGRES_PASSWORD=feast -e POSTGRES_DB=feast_offline \
   -e PGDATA=/var/lib/postgresql/data/pgdata \
   -v day19-postgres-data:/var/lib/postgresql/data
@@ -73,7 +73,7 @@ still_running() {
 }
 ALL_UP=0
 for _ in $(seq 1 90); do
-  if port_open 6333 && port_open 6379 && port_open 5432 \
+  if port_open 6333 && port_open 6379 && port_open 5433 \
      && still_running day19-qdrant && still_running day19-redis \
      && still_running day19-postgres; then
     ALL_UP=1
@@ -98,6 +98,6 @@ container ls
 echo
 echo "[container] Qdrant  http://localhost:6333/dashboard"
 echo "[container] Redis   localhost:6379"
-echo "[container] Postgres localhost:5432  (feast/feast, db feast_offline)"
+echo "[container] Postgres localhost:5433  (feast/feast, db feast_offline)"
 echo "[container] next: bash setup-docker.sh    # venv + deps + seed"
 echo "[container] stop:  make container-down"

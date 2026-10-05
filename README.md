@@ -76,8 +76,26 @@ make api &
 make benchmark
 ```
 
-Yêu cầu: RAM ≥ 8 GB free, port 6333/6379/5432 không xung đột.
-Endpoints: Qdrant http://localhost:6333 · Redis :6379 · Postgres :5432
+Yêu cầu: RAM ≥ 8 GB free, port 6333/6379/5433 không xung đột (Postgres map ra host 5433 để không đụng PostgreSQL cài sẵn trên máy).
+Endpoints: Qdrant http://localhost:6333 · Redis :6379 · Postgres :5433
+
+### Bài nộp này chạy path Docker: các điều chỉnh so với template
+
+Template ban đầu chỉ chạy được "thật" ở path lite. Để Docker path dùng đúng
+Qdrant server + Redis + Postgres, bài này sửa như sau:
+
+| Thay đổi | Lý do |
+|---|---|
+| `app/__init__.py` nạp `.env` (python-dotenv) | template không có gì đọc `.env`, nên `QDRANT_MODE=server` không có tác dụng |
+| NB1/NB2 chọn client theo `QDRANT_MODE`, số chiều lấy từ `Embedder.dim` | trước đây hard-code `QdrantClient(":memory:")` và `size=384` |
+| Feast: online `redis`, offline `postgres`; source là `PostgreSQLSource`, NB4 nạp 3 bảng vào Postgres | Postgres offline store không đọc được `FileSource` (parquet) |
+| Postgres map ra host **5433** | PostgreSQL cài sẵn trên máy đã chiếm 5432 và trả lời thay container |
+| Kết nối qua **127.0.0.1** thay vì `localhost` | trên Windows + Docker Desktop, `localhost` tốn ~5 s mỗi kết nối (thử IPv6 trước) |
+| Qdrant client dùng **gRPC** (`prefer_grpc`) | query depth-50 kèm payload: ~16 ms qua REST/JSON so với ~3 ms qua gRPC |
+| Embedding giữ `fastembed` bge-small | máy không có GPU; bge-m3 trên CPU phá ngân sách P99 50 ms (bge-m3 chỉ dùng để so chất lượng NB2, xem REFLECTION) |
+
+Chạy trên Windows không có `make`: dùng trực tiếp `.venv/Scripts/python …` và
+`.venv/Scripts/jupyter-nbconvert.exe --execute --inplace notebooks/0X_*.ipynb`.
 
 ### Ba runtime, không phải chỉ Docker
 

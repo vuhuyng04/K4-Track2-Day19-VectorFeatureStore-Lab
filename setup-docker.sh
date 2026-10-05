@@ -5,10 +5,10 @@
 set -euo pipefail
 
 echo "[docker] Day 19 full Docker setup"
-echo "[docker] Stack: Qdrant (server) + Redis + Postgres + bge-m3 embeddings"
-echo "[docker] Note: bge-m3 is multilingual (much better on Vietnamese) but"
-echo "[docker]       downloads ~2.2 GB on first use. Set EMBEDDING_BACKEND=fastembed"
-echo "[docker]       in .env to keep the light 384-dim English model."
+echo "[docker] Stack: Qdrant (server) + Redis + Postgres + bge-small embeddings"
+echo "[docker] Note: EMBEDDING_BACKEND stays fastembed (384d) so hybrid P99 < 50 ms"
+echo "[docker]       holds on CPU. Set EMBEDDING_BACKEND=bge-m3 in .env to compare"
+echo "[docker]       Vietnamese quality (~2.2 GB download, re-index required)."
 echo
 
 # ── 1. Runtime preflight ────────────────────────────────────────────────
@@ -117,7 +117,7 @@ cat <<EOF
 
   Qdrant   → http://localhost:6333  (dashboard)
   Redis    → redis://localhost:6379
-  Postgres → postgresql://feast:feast@localhost:5432/feast_offline
+  Postgres → postgresql://feast:feast@localhost:5433/feast_offline
 
 Activate the venv and continue:
 

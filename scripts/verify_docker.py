@@ -35,26 +35,26 @@ def main() -> int:
     try:
         # ── 1. Qdrant server ────────────────────────────────────────────
         step("Qdrant server reachable on :6333")
-        assert can_reach("localhost", 6333), \
+        assert can_reach("127.0.0.1", 6333), \
             "Qdrant not reachable. Run `docker compose up -d` first."
         from qdrant_client import QdrantClient
-        client = QdrantClient(url="http://localhost:6333")
+        client = QdrantClient(url="http://127.0.0.1:6333")
         # Smoke: list collections (empty list is fine)
         cols = client.get_collections()
         print(f"    Qdrant collections: {len(cols.collections)}")
 
         # ── 2. Redis ────────────────────────────────────────────────────
         step("Redis reachable on :6379")
-        assert can_reach("localhost", 6379), "Redis not reachable."
+        assert can_reach("127.0.0.1", 6379), "Redis not reachable."
         import redis
-        r = redis.Redis(host="localhost", port=6379)
+        r = redis.Redis(host="127.0.0.1", port=6379)
         assert r.ping(), "Redis PING failed"
 
         # ── 3. Postgres ─────────────────────────────────────────────────
-        step("Postgres reachable on :5432")
-        assert can_reach("localhost", 5432), "Postgres not reachable."
+        step("Postgres reachable on :5433")
+        assert can_reach("127.0.0.1", 5433), "Postgres not reachable."
         import psycopg
-        with psycopg.connect("postgresql://feast:feast@localhost:5432/feast_offline") as conn:
+        with psycopg.connect("postgresql://feast:feast@127.0.0.1:5433/feast_offline") as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
                 assert cur.fetchone() == (1,)

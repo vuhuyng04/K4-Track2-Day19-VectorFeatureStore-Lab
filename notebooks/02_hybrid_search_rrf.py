@@ -19,13 +19,15 @@
 # %%
 import _setup  # noqa: F401
 import json
+import os
 import statistics
 from pathlib import Path
 
-from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from rank_bm25 import BM25Okapi
+
+from app.embeddings import Embedder  # importing `app` also loads .env
 
 DATA = Path(_setup.__file__).resolve().parent.parent / "data"
 
@@ -40,11 +42,19 @@ tokenized = [(d["title"] + " " + d["text"]).lower().split() for d in docs]
 bm25 = BM25Okapi(tokenized)
 
 # Vector
-embedder = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
-client = QdrantClient(":memory:")
-client.create_collection(
+# Same switch as NB1: QDRANT_MODE / EMBEDDING_BACKEND come from .env.
+embedder = Embedder()
+if os.getenv("QDRANT_MODE", "memory") == "server":
+    client = QdrantClient(url=os.getenv("QDRANT_URL", "http://127.0.0.1:6333"))
+else:
+    client = QdrantClient(":memory:")
+print(f"Qdrant mode: {os.getenv('QDRANT_MODE', 'memory')}  |  "
+      f"embedder: {embedder.model_name} ({embedder.dim}d)")
+if client.collection_exists("lab19"):
+    client.delete_collection("lab19")
+_ = client.create_collection(
     collection_name="lab19",
-    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+    vectors_config=VectorParams(size=embedder.dim, distance=Distance.COSINE),
 )
 BATCH = 64
 points = []

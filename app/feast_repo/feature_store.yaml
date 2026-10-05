@@ -1,24 +1,28 @@
 project: lab19
 provider: local
 registry: registry.db
+# Docker path (active): Redis online store + Postgres offline store, both from
+# docker-compose.yml. NB4 loads the three source tables into Postgres before
+# `feast apply` (see PostgreSQLSource in feature_views.py).
 online_store:
-  type: sqlite
-  path: online_store.db
+  type: redis
+  connection_string: 127.0.0.1:6379   # 127.0.0.1: localhost adds ~5 s on Windows
 offline_store:
-  type: file
+  type: postgres
+  host: 127.0.0.1
+  port: 5433            # docker-compose maps container 5432 -> host 5433
+  database: feast_offline
+  user: feast
+  password: feast
+  db_schema: public
+  sslmode: disable       # local docker Postgres has no TLS; feast defaults to require
 entity_key_serialization_version: 3
 
-# Docker path: replace the online_store + offline_store blocks above with the
-# following (and `feast apply` will write to Redis + Postgres instead):
+# Lite path: replace the two store blocks above with the following and switch
+# the sources in feature_views.py back to FileSource (Parquet under data/):
 #
 # online_store:
-#   type: redis
-#   connection_string: localhost:6379
+#   type: sqlite
+#   path: online_store.db
 # offline_store:
-#   type: postgres
-#   host: localhost
-#   port: 5432
-#   database: feast_offline
-#   user: feast
-#   password: feast
-#   db_schema: public
+#   type: file

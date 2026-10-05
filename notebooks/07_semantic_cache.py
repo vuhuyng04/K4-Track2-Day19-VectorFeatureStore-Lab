@@ -116,6 +116,32 @@ for th in (0.60, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95):
 # > hằng số để copy. Phân bố query của bạn quyết định con số cuối cùng.
 
 # %% [markdown]
+# ### Phân tích từ số liệu chạy thật: chọn ngưỡng **0,85**
+#
+# | ngưỡng | tiết kiệm | trả lời sai |
+# |---:|---:|---:|
+# | 0,75 | 100% | **36%** |
+# | 0,80 | 100% | 5% |
+# | **0,85** | **100%** | **0%** |
+# | 0,90 | 96% | 0% |
+# | 0,95 | 53% | 0% |
+#
+# - **Vì sao 0,75 chưa đủ:** cứ 3 câu hỏi *không có* trong cache thì hơn 1 câu vẫn
+#   nhận câu trả lời của câu khác (36%). Ở ngưỡng 0,75 cả hai nhóm đều hit 100%,
+#   tức ngưỡng này **không tách được** positive khỏi negative. Lý do: các câu
+#   probe dùng chung khung câu tiếng Việt ("cho tôi hỏi …", "… thì làm thế nào"),
+#   corpus sinh theo template nên câu hỏi khác chủ đề vẫn chia sẻ nhiều từ, còn
+#   `bge-small-en` (huấn luyện chủ yếu trên tiếng Anh) nén câu tiếng Việt vào một
+#   vùng hẹp. Kết quả là cosine của các cặp *khác nghĩa* cũng thường rơi vào 0,75–0,84.
+# - **Vì sao 0,85:** đây là ngưỡng thấp nhất đưa tỉ lệ trả lời sai về 0% mà vẫn giữ
+#   100% tiết kiệm. 0,80 còn 5% sai. Với cache, một câu trả lời sai tệ hơn nhiều so
+#   với một lần MISS: MISS chỉ tốn một lần gọi LLM, còn hit sai trả cho người dùng
+#   câu trả lời trôi chảy nhưng sai, rất khó phát hiện.
+# - **Lề an toàn:** khoảng 0,85–0,90 vẫn 0% sai và ≥ 96% tiết kiệm. Production nên
+#   bắt đầu ở 0,85–0,88, theo dõi tỉ lệ sai trên mẫu log thật, và **đo lại khi đổi
+#   embedding model** (bge-m3 sẽ cho phân bố cosine khác hẳn).
+
+# %% [markdown]
 # ## 3. TTL: câu trả lời cũ không tự biết mình cũ
 #
 # `SemanticCache` dùng **đồng hồ ảo** (`advance()`) nên ta test được TTL mà không

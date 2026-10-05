@@ -123,6 +123,42 @@ print(f"\nΔ recall vs single-shot:  tách câu {split - base:+.3f}   tách + fi
 # NB5 lặp lại ở tầng agent: **filter không miễn phí, phải đo chứ đừng đoán.**
 
 # %% [markdown]
+# ### Phân tích từ số liệu chạy thật (Docker path, bge-small, ngân sách 16 doc)
+#
+# | strategy | recall | balance | calls |
+# |---|---:|---:|---:|
+# | single-shot | 0.526 | 0.08 | 1.0 |
+# | agentic (no filter) | **0.906** | **0.93** | 2.3 |
+# | agentic (+filter) | 0.823 | 0.76 | 2.3 |
+#
+# **Vì sao `agentic (+filter)` thấp hơn `agentic (no filter)`** (−0.083 recall, −0.17 balance)
+# dù cả hai cùng tách câu và cùng ngân sách:
+#
+# 1. **Filter là pre-filter cứng, không phải gợi ý.** Planner đoán `topic` cho từng
+#    vế bằng keyword (`detect_topic`). Kiểm tra 12 câu hỏi ghép trong
+#    `data/agent_queries.jsonl`: **2/12 câu bị đoán sai topic ở một vế**:
+#    - "… devops + backend": vế backend bị gán `topic=ai_ml`
+#    - "… ai_ml + security": vế security bị gán `topic=ai_ml`
+#
+#    Với vế đó, filter **loại hẳn cả 8 doc vàng** khỏi không gian tìm kiếm. Khác với
+#    không filter (vector search vẫn kéo được doc đúng cụm lên), ở đây không có cách
+#    nào lấy lại chúng trong cùng một call. Khi đoán đúng, filter cũng không thêm
+#    được gì vì vector search vốn đã xếp đúng cụm lên đầu. Nên filter suy đoán
+#    chỉ có thể giữ nguyên hoặc làm giảm recall.
+# 2. **Ngân sách chia đều theo vế** (`per = budget // len(parts)`). Vế bị filter
+#    sai mất trọn slot của nó, nên `balance` tụt mạnh hơn `recall` (0.93 → 0.76).
+#    4/12 câu còn bị tách thành 3 vế (vd. `frontend, frontend, mobile`), mỗi vế chỉ
+#    còn 5 slot, nên một topic chiếm 10 slot còn topic kia 5.
+# 3. **Reflection không cứu được ca này.** Mục 4 cho thấy agent chỉ nới filter khi một
+#    call trả về **ít hơn `min_evidence`** doc (như `since_year=2027` → 0 kết quả).
+#    Filter sai topic vẫn trả đủ 8 doc, chỉ là doc **sai cụm**. Agent không có tín hiệu
+#    để biết mình sai, nên không thử lại.
+#
+# Ở corpus này filter **không tiết kiệm call nào** (cả hai đều 2.3 call/câu), nên
+# filter suy đoán là lỗ ròng. Kết luận giống NB5: chỉ dùng filter khi nó là ràng buộc
+# *thật* (tenant, quyền truy cập), không dùng filter đoán từ keyword để "tăng độ chính xác".
+
+# %% [markdown]
 # ## 4. Reflection: filter tồi còn tệ hơn không filter
 #
 # `Agent` thử lại **một lần** với filter được nới ra khi một call trả về quá ít

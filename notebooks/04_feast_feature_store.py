@@ -77,6 +77,34 @@ for p in sorted(FEAST_DATA.glob("*.parquet")):
     print(f"  {p.name}  {p.stat().st_size/1024:.1f} KB")
 
 # %% [markdown]
+# ### 1b. Docker path — nạp 3 bảng vào Postgres (offline store)
+#
+# `feature_store.yaml` dùng `offline_store: postgres`, và 3 source trong
+# `feature_views.py` là `PostgreSQLSource(table=...)`. Postgres offline store
+# không đọc Parquet, nên ta ghi cùng dữ liệu vào 3 bảng trong `feast_offline`
+# (giống production: data warehouse là nguồn sự thật, Feast chỉ đọc).
+
+# %%
+import os
+
+import app  # noqa: F401  -- loads .env (POSTGRES_URL)
+from sqlalchemy import create_engine, text
+
+pg_url = os.getenv("POSTGRES_URL", "postgresql://feast:feast@127.0.0.1:5433/feast_offline")
+engine = create_engine(pg_url.replace("postgresql://", "postgresql+psycopg://", 1))
+tables = {
+    "user_profile": make_user_profile(),
+    "item_popularity": make_item_popularity(),
+    "query_velocity": make_query_velocity(),
+}
+for name, df in tables.items():
+    df.to_pandas().to_sql(name, engine, if_exists="replace", index=False)
+with engine.connect() as conn:
+    for name in tables:
+        n = conn.execute(text(f"SELECT COUNT(*) FROM {name}")).scalar_one()
+        print(f"  postgres  {name:16} {n:>5} rows")
+
+# %% [markdown]
 # ## 2. `feast apply` — register 3 feature views với metadata registry
 #
 # `app/feast_repo/feature_views.py` đã định nghĩa 3 feature views (xem file đó).
@@ -94,6 +122,17 @@ if res.stderr:
     print("STDERR:")
     print(res.stderr)
 assert res.returncode == 0, f"feast apply failed: {res.stderr}"
+
+# Registry check: all 3 feature views must be registered.
+res = subprocess.run(
+    ["feast", "feature-views", "list"],
+    cwd=str(FEAST_DIR),
+    capture_output=True, text=True, check=False,
+)
+print(res.stdout)
+assert all(v in res.stdout for v in (
+    "user_profile_features", "item_popularity_features", "query_velocity_features",
+)), "expected 3 feature views in the registry"
 
 # %% [markdown]
 # ## 3. `feast materialize-incremental` — load offline → online
@@ -113,6 +152,14 @@ if res.stderr:
     print("STDERR (tail):")
     print(res.stderr[-500:])
 assert res.returncode == 0, f"materialize failed: {res.stderr}"
+
+# Docker path: verify the rows actually landed in Redis (online store).
+import redis
+
+r = redis.Redis(host="127.0.0.1", port=6379)
+n_keys = sum(1 for _ in r.scan_iter(count=1000))
+print(f"Redis online store: {n_keys} entity keys "
+      f"(expect 100 users + 1000 items = 1100)")
 
 # %% [markdown]
 # ## 4. Online lookup — đo latency
@@ -197,12 +244,17 @@ historical = fs.get_historical_features(
 ).to_df()
 print(historical)
 
+# Đọc kết quả: u_001 có event lúc NOW-2h, nhưng profile của u_001 được ghi lúc
+# NOW-1h (`i % 48` giờ trước) -> tại thời điểm event chưa có giá trị nào, nên
+# PIT join trả NaN thay vì "mượn" giá trị tương lai. Đó chính là no-leakage.
+# u_002 (profile NOW-2h <= event NOW-1h) và u_003 (NOW-3h <= NOW) có giá trị.
+
 # %% [markdown]
 # ## Deliverable evidence
 #
 # 1. Output cell 2: 3 Parquet files generated.
-# 2. Output cell 3: `feast apply` STDOUT showing "Created feature view <name>" × 3.
-# 3. Output cell 4: `materialize` log showing rows materialized to online store.
+# 2. Output cell 3: `feast apply` STDOUT (deploy 3 feature views) + `feast feature-views list` showing all 3.
+# 3. Output cell 4: `materialize` log (Postgres -> Redis) + Redis key count.
 # 4. Output cell 5: 1 online lookup result + latency.
 # 5. Output cell 6: 100-lookup P50/P95/P99 + PASS line.
 # 6. Output cell 7: PIT join DataFrame (3 rows × features).

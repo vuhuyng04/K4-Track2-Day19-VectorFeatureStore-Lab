@@ -18,9 +18,12 @@ import _setup  # noqa: F401  -- adds repo root to sys.path
 import json
 from pathlib import Path
 
-from fastembed import TextEmbedding
+import os
+
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
+
+from app.embeddings import Embedder  # importing `app` also loads .env
 
 DATA = Path(_setup.__file__).resolve().parent.parent / "data"
 
@@ -45,30 +48,43 @@ print(json.dumps(docs[0], ensure_ascii=False, indent=2))
 # ## 2. Embedding model: `BAAI/bge-small-en-v1.5`
 #
 # `fastembed` chạy ONNX → CPU friendly, không cần GPU. 384-dim vectors.
+# Model được chọn qua `EMBEDDING_BACKEND` trong `.env` (`app/embeddings.py`);
+# path Docker này giữ `fastembed` vì máy không có GPU — xem `.env`.
 #
 # > Trong production tiếng Việt 2026, bạn nên dùng `bge-m3` hoặc
 # > `text-embedding-3-large` (xem deck §1, bảng *Embedding Models 2026*).
 # > Cho lab này dùng `bge-small-en` để mọi laptop chạy được nhanh.
 
 # %%
-embedder = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+embedder = Embedder()
+print(f"Backend: {embedder.backend} -> {embedder.model_name} ({embedder.dim}d)")
 sample = list(embedder.embed(["cloud computing tiếng Việt"]))[0]
 print(f"Vector dim: {len(sample)}")
 print(f"First 8 values: {sample[:8].tolist()}")
 
 # %% [markdown]
-# ## 3. Index vào Qdrant (in-memory mode)
+# ## 3. Index vào Qdrant (server mode — Docker path)
 #
-# Qdrant in-memory chạy trong-process — không cần Docker, không cần server.
-# Cùng API như Qdrant production server, nên code này chuyển sang prod chỉ
-# bằng cách đổi `QdrantClient(":memory:")` → `QdrantClient(url="http://...")`.
+# `QDRANT_MODE=server` (trong `.env`) → kết nối Qdrant server trong Docker
+# (`docker compose up -d`, dashboard http://localhost:6333/dashboard).
+# `QDRANT_MODE=memory` → Qdrant in-process, không cần Docker. Cùng một API,
+# chỉ khác cách khởi tạo client. Số chiều lấy từ `embedder.dim`, không hard-code.
 
 # %%
-client = QdrantClient(":memory:")
+QDRANT_MODE = os.getenv("QDRANT_MODE", "memory")
+if QDRANT_MODE == "server":
+    client = QdrantClient(url=os.getenv("QDRANT_URL", "http://127.0.0.1:6333"))
+else:
+    client = QdrantClient(":memory:")
+
+# Server collections persist across runs — drop and rebuild for a clean index.
+if client.collection_exists("lab19"):
+    client.delete_collection("lab19")
 client.create_collection(
     collection_name="lab19",
-    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+    vectors_config=VectorParams(size=embedder.dim, distance=Distance.COSINE),
 )
+print(f"Qdrant mode: {QDRANT_MODE}  |  collection lab19 ({embedder.dim}d) ready")
 
 # %% [markdown]
 # ## 4. TODO — embed + upsert toàn bộ corpus
